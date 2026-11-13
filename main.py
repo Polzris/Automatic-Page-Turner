@@ -22,6 +22,7 @@ options = vision.FaceLandmarkerOptions(
     min_tracking_confidence=0.5,
 )
 
+
 def main():
 
     # Open the camera
@@ -31,6 +32,11 @@ def main():
     if not cap.isOpened():
         print("Error: Could not open camera.")
         return
+
+    # Create sliders for adjusting the Canny thresholds in real time.
+    cv.namedWindow("Camera Feed")
+    cv.createTrackbar("Lower threshold", "Camera Feed", 50, 255, lambda _: None)
+    cv.createTrackbar("Upper threshold", "Camera Feed", 200, 255, lambda _: None)
 
     # Begin camera processing loop
     with vision.FaceLandmarker.create_from_options(options) as landmarker:
@@ -70,6 +76,6 @@ def main():
     cap.release()
     cv.destroyAllWindows()
 
-    
+
 if __name__ == "__main__":
     main()
