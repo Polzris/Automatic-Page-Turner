@@ -204,7 +204,7 @@ class AffineCalibrator:
 
 def draw_gaze_screen(calibrator, screen_w, screen_h, screen_xy=None,
                     raw_cam=None, ema_cam=None, manual_offset=(0.0, 0.0),
-                    arbitrary_count=0):
+                    arbitrary_count=0, face_margin=0.10, eye_margin=0.60):
     screen = np.zeros((screen_h, screen_w, 3), dtype=np.uint8)
     if calibrator.active:
         for idx, (x, y) in enumerate(calibrator.targets):
@@ -269,6 +269,16 @@ def draw_gaze_screen(calibrator, screen_w, screen_h, screen_xy=None,
                    (30, y + 35), cv.FONT_HERSHEY_SIMPLEX, 0.7,
                    (255, 255, 255), 2, cv.LINE_AA)
 
+    cv.putText(
+        screen,
+        f"Face margin: {face_margin:.2f} ([ / ])   Eye margin: {eye_margin:.2f} (, / .)",
+        (30, screen_h - 30),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2,
+        cv.LINE_AA,
+    )
     return screen
 
 
@@ -306,7 +316,9 @@ def load_itracker_net(model_def, model_weights):
     raise RuntimeError("OpenCV DNN Caffe loader is unavailable in this build.")
 
 
-def make_crop_preview(face_crop, left_crop, right_crop, screen_w, screen_h):
+def make_crop_preview(
+    face_crop, left_crop, right_crop, screen_w, screen_h, face_margin, eye_margin
+):
     crops = []
     for label, crop in (
         ("Face", face_crop),
@@ -322,9 +334,12 @@ def make_crop_preview(face_crop, left_crop, right_crop, screen_w, screen_h):
         crops.append(panel)
     preview = np.hstack(crops)
     preview = cv.resize(preview, (screen_w, screen_h), interpolation=cv.INTER_NEAREST)
-    cv.putText(preview, "Press F to return to gaze fullscreen",
-               (30, screen_h - 30), cv.FONT_HERSHEY_SIMPLEX,
-               1.0, (255, 255, 255), 2, cv.LINE_AA)
+    cv.putText(
+        preview,
+        f"Face margin: {face_margin:.2f} ([ / ])   Eye margin: {eye_margin:.2f} (, / .)   F: gaze view",
+        (30, screen_h - 30),
+        cv.FONT_HERSHEY_SIMPLEX,
+        0.8, (255, 255, 255), 2, cv.LINE_AA)
     return preview
 
 
@@ -362,6 +377,8 @@ def main():
     raw_cam = None
     manual_offset = np.zeros(2, dtype=np.float32)
     arbitrary_calibration_count = 0
+    face_margin = 0.10
+    eye_margin = 0.60
     clicked_position = {"value": None}
     crop_preview_mode = False
     latest_crops = {"face": None, "left": None, "right": None}
@@ -391,9 +408,13 @@ def main():
                 face_lm = result.face_landmarks[0]
                 all_pts = landmarks_to_pixels(face_lm, frame_w, frame_h)
 
-                face_rect = rect_from_points(all_pts, frame_w, frame_h, margin=0.10)
-                right_eye_rect = rect_from_points(all_pts[RIGHT_EYE_INDICES], frame_w, frame_h, margin=0.60)
-                left_eye_rect = rect_from_points(all_pts[LEFT_EYE_INDICES], frame_w, frame_h, margin=0.60)
+                face_rect = rect_from_points(all_pts, frame_w, frame_h, margin=face_margin)
+                right_eye_rect = rect_from_points(
+                    all_pts[RIGHT_EYE_INDICES], frame_w, frame_h, margin=eye_margin
+                )
+                left_eye_rect = rect_from_points(
+                    all_pts[LEFT_EYE_INDICES], frame_w, frame_h, margin=eye_margin
+                )
 
                 x, y, w, h = face_rect
                 cv.rectangle(frame, (x, y), (x + w, y + h), (0, 200, 255), 2)
@@ -470,6 +491,16 @@ def main():
             if key == ord("q"):
                 break
 
+            margin_step = 0.05
+            if key == ord("["):
+                face_margin = max(0.0, round(face_margin - margin_step, 2))
+            elif key == ord("]"):
+                face_margin = min(2.0, round(face_margin + margin_step, 2))
+            elif key == ord(","):
+                eye_margin = max(0.0, round(eye_margin - margin_step, 2))
+            elif key == ord("."):
+                eye_margin = min(2.0, round(eye_margin + margin_step, 2))
+
             nudge = 10
             if key == 81:
                 manual_offset[0] -= nudge
@@ -515,7 +546,7 @@ def main():
             if crop_preview_mode:
                 preview_frame = make_crop_preview(
                     latest_crops["face"], latest_crops["left"], latest_crops["right"],
-                    screen_w, screen_h,
+                    screen_w, screen_h, face_margin, eye_margin,
                 )
                 cv.imshow("Crop Preview", preview_frame)
             else:
@@ -536,6 +567,8 @@ def main():
                         ema_cam,
                         manual_offset,
                         arbitrary_calibration_count,
+                        face_margin,
+                        eye_margin,
                     ),
                 )
 
